@@ -14,9 +14,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Load credentials from environment variables
-BOT_TOKEN = os.getenv("BOT_TOKEN", "7564968755:AAGMhiFJIjpJ__imIhasc0APWes5dwcSA0k")
+PRIMARY_BOT_TOKEN = os.getenv("PRIMARY_BOT_TOKEN", "7564968755:AAGMhiFJIjpJ__imIhasc0APWes5dwcSA0k")
 PRIMARY_CHAT_ID = os.getenv("PRIMARY_CHAT_ID", "7878423855")
-SECONDARY_CHAT_ID = os.getenv("SECONDARY_CHAT_ID", "YOUR_SECONDARY_CHAT_ID")  # Replace with actual secondary chat ID
+
+SECONDARY_BOT_TOKEN = os.getenv("SECONDARY_BOT_TOKEN", "7809966272:AAHnbRmHeIiqJTZ_RPRpGNtMFqy6PiDE0EU")
+SECONDARY_CHAT_ID = os.getenv("SECONDARY_CHAT_ID", "5033816442")
+
 QUEUE_FILE = "message_queue.json"
 
 # Initialize message queue
@@ -26,24 +29,23 @@ def init_queue():
             json.dump([], f)
 
 # Save message to queue
-def save_to_queue(chat_id, message):
+def save_to_queue(message):
     try:
         with open(QUEUE_FILE, 'r+') as f:
             queue = json.load(f)
             queue.append({
-                "chat_id": chat_id,
                 "message": message,
                 "timestamp": datetime.utcnow().isoformat()
             })
             f.seek(0)
             json.dump(queue, f, indent=2)
-        logger.info(f"Queued message for chat_id {chat_id}: {message}")
+        logger.info(f"Queued message for primary user: {message}")
     except Exception as e:
         logger.error(f"Failed to save to queue: {e}")
 
 # Send message via Telegram API
-def send_telegram_message(chat_id, message):
-    telegram_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+def send_telegram_message(bot_token, chat_id, message):
+    telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
         response = requests.post(telegram_url, data={
             "chat_id": chat_id,
@@ -70,10 +72,9 @@ def retry_queued_messages():
                     continue
                 updated_queue = []
                 for item in queue:
-                    chat_id = item["chat_id"]
                     message = item["message"]
-                    if send_telegram_message(chat_id, message):
-                        logger.info(f"Successfully sent queued message to chat_id {chat_id}")
+                    if send_telegram_message(PRIMARY_BOT_TOKEN, PRIMARY_CHAT_ID, message):
+                        logger.info(f"Successfully sent queued message to primary user")
                     else:
                         updated_queue.append(item)  # Keep in queue if failed
                 f.seek(0)
@@ -92,18 +93,17 @@ def alert():
     message = data['message']
     logger.debug(f"Received alert: {message}")
 
-    # Try sending to primary user
-    if send_telegram_message(PRIMARY_CHAT_ID, message):
+    # Try sending to primary user using primary bot
+    if send_telegram_message(PRIMARY_BOT_TOKEN, PRIMARY_CHAT_ID, message):
         return jsonify({"status": "success", "message": "Alert sent to primary user"})
     else:
         # Queue message for primary user
-        save_to_queue(PRIMARY_CHAT_ID, message)
-        # Try sending to secondary user
-        if send_telegram_message(SECONDARY_CHAT_ID, f"Primary user offline: {message}"):
-            return jsonify({"status": "success", "message": "Primary user offline, alert sent to secondary user"})
+        save_to_queue(message)
+        # Try sending to secondary user using secondary bot
+        if send_telegram_message(SECONDARY_BOT_TOKEN, SECONDARY_CHAT_ID, f"Primary user offline: {message}"):
+            return jsonify({"status": "success", "message": "Primary offline, alert sent to secondary user"})
         else:
-            save_to_queue(SECONDARY_CHAT_ID, f"Primary user offline: {message}")
-            return jsonify({"status": "error", "message": "Failed to send to both users, messages queued"}), 500
+            return jsonify({"status": "error", "message": "Failed to send to both users, queued for retry"}), 500
 
 if __name__ == '__main__':
     # Initialize queue and start retry thread

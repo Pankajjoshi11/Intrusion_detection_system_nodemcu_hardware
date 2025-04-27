@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: flask-telegram-alert
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PRIMARY_BOT_TOKEN
+        value: 7564968755:AAGMhiFJIjpJ__imIhasc0APWes5dwcSA0k
+      - key: PRIMARY_CHAT_ID
+        value: 7878423855
+      - key: SECONDARY_BOT_TOKEN
+        value: 7809966272:AAHnbRmHeIiqJTZ_RPRpGNtMFqy6PiDE0EU
+      - key: SECONDARY_CHAT_ID
+        value: 5033816442
